@@ -519,43 +519,135 @@ await sleep(15000)
 }
 break
 case 'ping': {
-    const { uptime } = process;
-    const totalSeconds = Math.floor(uptime());
-    const [hours, minutes, seconds] = [
-        Math.floor(totalSeconds / 3600),
-        Math.floor((totalSeconds % 3600) / 60),
-        totalSeconds % 60
-    ];
-    try {
-        const os = require('os');
-        const totalRam = os.totalmem() / 1024 / 1024 / 1024;
-        const freeRam = os.freemem() / 1024 / 1024 / 1024;
-        const usedRam = totalRam - freeRam;
-        const { model: cpuModel, speed: cpuSpeed } = os.cpus()[0];
-        const botNumber = '6281234567890';
-        const pingMessage = `
-🟢 *Status Bot*:
-• *Ping:* ${Math.round(uptime() * 1000)} ms
-• *Uptime:* ${hours} jam ${minutes} menit ${seconds} detik
-• *Versi Bot:* 1.0.0
-• *Nama Bot:* ${global.namabot || 'Nama bot tidak tersedia'}
-🛠 *Informasi Sistem*:
-• *Versi Node.js:* ${process.version}
-• *Platform:* ${process.platform}
-• *Pemakaian Memori (RAM):* ${usedRam.toFixed(2)} GB dari ${totalRam.toFixed(2)} GB
-• *Memori yang Tersedia:* ${freeRam.toFixed(2)} GB
-• *Penggunaan CPU:* ${cpuModel} dengan kecepatan ${cpuSpeed} MHz
-📱 *Informasi Bot*:
-• *Nomor Bot:* ${botNumber}
-• *ID Bot:* Tidak Tersedia
-🤖 *Bot Online*: Ya ✅
-`;
-        reply(pingMessage);
-    } catch (e) {
-        reply(`Terjadi kesalahan: ${e.message}`);
-    }
+const os = require('os')
+
+function formatUptime(uptime) {
+const detik = Math.floor(uptime % 60)
+const menit = Math.floor((uptime / 60) % 60)
+const jam = Math.floor((uptime / 3600) % 24)
+return `${jam} jam, ${menit} menit, ${detik} detik`
 }
-break;
+
+function getVersions(callback) {
+exec('node -v', (err, nodeVersion) => {
+if (err) nodeVersion = '✖️'
+exec('npm -v', (err, npmVersion) => {
+if (err) npmVersion = '✖️'
+exec('ffmpeg -version', (err, ffmpegVersion) => {
+if (err) ffmpegVersion = '✖️'
+exec('python --version || python3 --version || py --version', (err, pythonVersion) => {
+if (err) pythonVersion = '✖️'
+exec('pip --version || pip3 --version', (err, pipVersion) => {
+if (err) pipVersion = '✖️'
+exec('choco -v', (err, chocoVersion) => {
+if (err) chocoVersion = '✖️'
+callback({ nodeVersion, npmVersion, ffmpegVersion, pythonVersion, pipVersion, chocoVersion })
+})
+})
+})
+})
+})
+})
+}
+
+function getStorageInfo(callback) {
+if (os.platform() === 'win32') {
+exec('wmic logicaldisk get size,freespace,caption', (err, stdout) => {
+if (err) return callback('✖️')
+const lines = stdout.trim().split('\n').slice(1)
+const infoPenyimpanan = lines.map(line => {
+const [drive, free, total] = line.trim().split(/\s+/)
+return `🖥️ ${drive}: ${(total / (1024 ** 3)).toFixed(2)} GB total, ${(free / (1024 ** 3)).toFixed(2)} GB bebas`
+}).join('\n')
+callback(infoPenyimpanan)
+})
+} else {
+exec('df -h --output=source,size,avail,target', (err, stdout) => {
+if (err) return callback('✖️')
+const lines = stdout.trim().split('\n').slice(1)
+const infoPenyimpanan = lines.map(line => {
+const [device, total, free, mount] = line.trim().split(/\s+/)
+return `🖥️ ${mount}: ${total} total, ${free} bebas di ${device}`
+}).join('\n')
+callback(infoPenyimpanan)
+})
+}
+}
+
+function getLinuxInfo(callback) {
+exec('cat /etc/os-release', (err, osInfo) => {
+if (err) osInfo = '✖️'
+callback(osInfo.trim())
+})
+}
+
+function getBatteryInfo(callback) {
+if (os.platform() === 'linux' || os.platform() === 'darwin') {
+exec('upower -i $(upower -e | grep BAT)', (err, batteryInfo) => {
+if (err) return callback('✖️')
+callback(batteryInfo)
+})
+} else if (os.platform() === 'win32') {
+exec('WMIC Path Win32_Battery Get EstimatedChargeRemaining', (err, batteryInfo) => {
+if (err) return callback('✖️')
+callback(`🔋 ${batteryInfo.trim()}%`)
+})
+} else {
+callback('✖️')
+}
+}
+
+function getSystemInfo() {
+return {
+platform: os.platform(),
+cpuArch: os.arch(),
+cpus: os.cpus().length,
+totalMemory: (os.totalmem() / (1024 ** 3)).toFixed(2) + ' GB',
+freeMemory: (os.freemem() / (1024 ** 3)).toFixed(2) + ' GB',
+uptime: formatUptime(os.uptime()),
+osVersion: os.release(),
+loadAverage: os.loadavg().map(load => load.toFixed(2)).join(', ')
+}
+}
+
+const sistemInfo = await getSystemInfo()
+getVersions((versi) => {
+getBatteryInfo((statusBaterai) => {
+getStorageInfo((infoPenyimpanan) => {
+getLinuxInfo((infoLinux) => {
+let txt = `> *📊 Informasi Sistem*\n\n`
+txt += `- 🌐 *Platform*: _${sistemInfo.platform}_\n`
+txt += `- 💻 *Arsitektur CPU*: ${sistemInfo.cpuArch}\n`
+txt += `- 🧠 *Jumlah CPU*: ${sistemInfo.cpus}\n`
+txt += `- 🗄️ *Memori Total*: ${sistemInfo.totalMemory}\n`
+txt += `- 🗃️ *Memori Bebas*: ${sistemInfo.freeMemory}\n`
+txt += `- ⏱️ *Waktu Aktif*: ${sistemInfo.uptime}\n`
+txt += `- 📀 *Versi OS*: ${sistemInfo.osVersion}\n`
+txt += `- 📊 *Rata-rata Beban (1, 5, 15 menit)*: ${sistemInfo.loadAverage}\n`
+txt += `- 🔋 *Energi*: ${statusBaterai}\n\n`
+
+txt += `> *💾 Penyimpanan*\n`
+txt += `${infoPenyimpanan}\n\n`
+
+txt += `> *🛠️ Versi Alat*\n\n`
+txt += `- ☕ *Node.js*: ${versi.nodeVersion.trim()}\n`
+txt += `- 📦 *NPM*: ${versi.npmVersion.trim()}\n`
+txt += `- 🎥 *FFmpeg*: ${versi.ffmpegVersion.split('\n')[0]}\n`
+txt += `- 🐍 *Python*: ${versi.pythonVersion.trim()}\n`
+txt += `- 📦 *PIP*: ${versi.pipVersion.trim()}\n`
+txt += `- 🍫 *Chocolatey*: ${versi.chocoVersion.trim()}\n\n`
+
+if (os.platform() === 'linux') {
+txt += `> *🐧 Distribusi Linux*\n${infoLinux}\n`
+}
+
+m.reply(txt)
+})
+})
+})
+})
+}
+break
 case 'sf': case 'sfile': case 'sfiledl': case 'sfdl': {
     if (!text.includes('https://sfile.mobi')) return reply(`• *Example :* .${command} https://sfile.mobi/xxxxxxx/`);
 
